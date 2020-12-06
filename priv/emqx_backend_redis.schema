@@ -1,0 +1,115 @@
+{mapping, "backend.redis.type", "emqx_backend_redis.server", [
+{default, single},
+{datatype, {enum, [single, sentinel, cluster]}}
+]}.
+
+{mapping, "backend.redis.server", "emqx_backend_redis.server", [
+   {default, "127.0.0.1:6379"},
+   {datatype, [string]}
+ ]}.
+
+ {mapping, "backend.redis.sentinel", "emqx_backend_redis.server", [
+   {default, ""},
+   {datatype, string},
+   hidden
+ ]}.
+
+ {mapping, "backend.redis.pool", "emqx_backend_redis.server", [
+   {default, 8},
+   {datatype, integer}
+ ]}.
+
+ {mapping, "backend.redis.database", "emqx_backend_redis.server", [
+   {default, 0},
+   {datatype, integer}
+ ]}.
+
+ {mapping, "backend.redis.password", "emqx_backend_redis.server", [
+   {default, ""},
+   {datatype, string},
+   hidden
+ ]}.
+
+ {translation, "emqx_backend_redis.server", fun(Conf) ->
+   Fun = fun(S) ->
+     case string:tokens(S, ":") of
+       [Domain]       -> {Domain, 6379};
+       [Domain, Port] -> {Domain, list_to_integer(Port)}
+     end
+   end,
+   Servers = cuttlefish:conf_get("backend.redis.server", Conf),
+   Type = cuttlefish:conf_get("backend.redis.type", Conf),
+   Server = case Type of
+     single ->
+       {Host, Port} = Fun(Servers),
+       [{host, Host}, {port, Port}];
+     _ ->
+       S = string:tokens(Servers, ","),
+       [{servers, [Fun(S1) || S1 <- S]}]
+   end,
+   Pool = cuttlefish:conf_get("backend.redis.pool", Conf),
+   Passwd = cuttlefish:conf_get("backend.redis.password", Conf),
+   DB = cuttlefish:conf_get("backend.redis.database", Conf),
+   Sentinel = cuttlefish:conf_get("backend.redis.sentinel", Conf),
+   [{type, Type},
+    {pool_size, Pool},
+    {auto_reconnect, 1},
+    {database, DB},
+    {password, Passwd},
+    {sentinel, Sentinel}] ++ Server
+ end}.
+
+ {mapping, "backend.redis.query_timeout", "emqx_backend_redis.query_timeout", [
+   {default, ""},
+   {datatype, string}
+ ]}.
+
+ {translation, "emqx_backend_redis.query_timeout", fun(Conf) ->
+   case cuttlefish:conf_get("backend.redis.query_timeout", Conf) of
+       "" -> infinity;
+       Duration ->
+           case cuttlefish_duration:parse(Duration, ms) of
+               {error, Reason} -> error(Reason);
+               Ms when is_integer(Ms) -> Ms
+           end
+   end
+ end}.
+
+ {mapping, "backend.redis.channel", "emqx_backend_redis.channel", [
+   {default, ""},
+   {datatype, string}
+ ]}.
+
+ {mapping, "backend.redis.client_connected_cmd", "emqx_backend_redis.client_connected_cmd", [
+     {default, ""},
+     {datatype, string}
+ ]}.
+
+ {mapping, "backend.redis.client_disconnected_cmd", "emqx_backend_redis.client_disconnected_cmd", [
+     {default, ""},
+     {datatype, string}
+ ]}.
+
+ {mapping, "backend.redis.message_retain_cmd", "emqx_backend_redis.message_retain_cmd", [
+ {default, ""},
+ {datatype, string}
+ ]}.
+
+ {mapping, "backend.redis.retainer.max_retained_messages", "emqx_backend_redis.max_retained_messages", [
+ {default, 0},
+ {datatype, integer}
+ ]}.
+
+ %% Maximum payload size of retained message.
+ %% {$configurable}
+ {mapping, "backend.redis.retainer.max_payload_size", "emqx_retainer.max_payload_size", [
+ {default, "1MB"},
+ {datatype, bytesize}
+ ]}.
+
+ %% Expiry interval of retained message
+ %% {$configurable}
+ {mapping, "backend.redis.retainer.expiry_interval", "emqx_retainer.expiry_interval", [
+ {default, 0},
+ {datatype, [integer, {duration, ms}]}
+ ]}.
