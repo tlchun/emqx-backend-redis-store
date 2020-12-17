@@ -31,8 +31,6 @@
 
 -export([q/2, qp/2]).
 
--vsn("4.2.1").
-
 %% 客户端连接
 client_connected(Pool, Msg) ->
 %%  获取Msg的客户端id
