@@ -1,115 +1,131 @@
-{mapping, "backend.redis.type", "emqx_backend_redis.server", [
-{default, single},
-{datatype, {enum, [single, sentinel, cluster]}}
+%%-*- mode: erlang -*-
+%% emqx_backend_redis config mapping
+
+{mapping, "backend.redis.$name.type", "emqx_backend_redis.pools", [
+  {default, single},
+  {datatype, atom}
 ]}.
 
-{mapping, "backend.redis.server", "emqx_backend_redis.server", [
-   {default, "127.0.0.1:6379"},
-   {datatype, [string]}
- ]}.
+{mapping, "backend.redis.$name.server", "emqx_backend_redis.pools", [
+  {default, {"127.0.0.1", 6379}},
+  {datatype, [string]}
+]}.
 
- {mapping, "backend.redis.sentinel", "emqx_backend_redis.server", [
-   {default, ""},
-   {datatype, string},
-   hidden
- ]}.
+{mapping, "backend.redis.$name.sentinel", "emqx_backend_redis.pools", [
+  {default, ""},
+  {datatype, string},
+  hidden
+]}.
 
- {mapping, "backend.redis.pool", "emqx_backend_redis.server", [
-   {default, 8},
-   {datatype, integer}
- ]}.
+{mapping, "backend.redis.$name.pool_size", "emqx_backend_redis.pools", [
+  {default, 8},
+  {datatype, integer}
+]}.
 
- {mapping, "backend.redis.database", "emqx_backend_redis.server", [
-   {default, 0},
-   {datatype, integer}
- ]}.
+{mapping, "backend.redis.$name.database", "emqx_backend_redis.pools", [
+  {default, 0},
+  {datatype, integer}
+]}.
 
- {mapping, "backend.redis.password", "emqx_backend_redis.server", [
-   {default, ""},
-   {datatype, string},
-   hidden
- ]}.
+{mapping, "backend.redis.$name.password", "emqx_backend_redis.pools", [
+  {default, ""},
+  {datatype, string},
+  hidden
+]}.
 
- {translation, "emqx_backend_redis.server", fun(Conf) ->
-   Fun = fun(S) ->
-     case string:tokens(S, ":") of
-       [Domain]       -> {Domain, 6379};
-       [Domain, Port] -> {Domain, list_to_integer(Port)}
-     end
-   end,
-   Servers = cuttlefish:conf_get("backend.redis.server", Conf),
-   Type = cuttlefish:conf_get("backend.redis.type", Conf),
-   Server = case Type of
-     single ->
-       {Host, Port} = Fun(Servers),
-       [{host, Host}, {port, Port}];
-     _ ->
-       S = string:tokens(Servers, ","),
-       [{servers, [Fun(S1) || S1 <- S]}]
-   end,
-   Pool = cuttlefish:conf_get("backend.redis.pool", Conf),
-   Passwd = cuttlefish:conf_get("backend.redis.password", Conf),
-   DB = cuttlefish:conf_get("backend.redis.database", Conf),
-   Sentinel = cuttlefish:conf_get("backend.redis.sentinel", Conf),
-   [{type, Type},
-    {pool_size, Pool},
-    {auto_reconnect, 1},
-    {database, DB},
-    {password, Passwd},
-    {sentinel, Sentinel}] ++ Server
- end}.
+{mapping, "backend.redis.$name.channel", "emqx_backend_redis.pools", [
+  {default, "mqtt_channel"},
+  {datatype, string}
+]}.
 
- {mapping, "backend.redis.query_timeout", "emqx_backend_redis.query_timeout", [
-   {default, ""},
-   {datatype, string}
- ]}.
+{mapping, "backend.redis.$name.ssl", "emqx_backend_redis.pools", [
+  {default, off},
+  {datatype, flag}
+]}.
 
- {translation, "emqx_backend_redis.query_timeout", fun(Conf) ->
-   case cuttlefish:conf_get("backend.redis.query_timeout", Conf) of
-       "" -> infinity;
-       Duration ->
-           case cuttlefish_duration:parse(Duration, ms) of
-               {error, Reason} -> error(Reason);
-               Ms when is_integer(Ms) -> Ms
-           end
-   end
- end}.
+{mapping, "backend.redis.$name.cafile", "emqx_backend_redis.pools", [
+  {default, ""},
+  {datatype, string}
+]}.
 
- {mapping, "backend.redis.channel", "emqx_backend_redis.channel", [
-   {default, ""},
-   {datatype, string}
- ]}.
+{mapping, "backend.redis.$name.certfile", "emqx_backend_redis.pools", [
+  {default, ""},
+  {datatype, string}
+]}.
 
- {mapping, "backend.redis.client_connected_cmd", "emqx_backend_redis.client_connected_cmd", [
-     {default, ""},
-     {datatype, string}
- ]}.
+{mapping, "backend.redis.$name.keyfile", "emqx_backend_redis.pools", [
+  {default, ""},
+  {datatype, string}
+]}.
 
- {mapping, "backend.redis.client_disconnected_cmd", "emqx_backend_redis.client_disconnected_cmd", [
-     {default, ""},
-     {datatype, string}
- ]}.
+{translation, "emqx_backend_redis.pools", fun(Conf) ->
+  Vars = cuttlefish_variable:fuzzy_matches(["backend", "redis", "$name", "server"], Conf),
+  Key = fun(Name, Attr) -> string:join(["backend.redis", Name, Attr], ".") end,
+  Fun = fun(S) ->
+    case string:tokens(S, ":") of
+      [Domain]       -> {Domain, 6379};
+      [Domain, Port] -> {Domain, list_to_integer(Port)}
+    end
+  end,
+  lists:map(fun({_, Name}) ->
+    Servers = cuttlefish:conf_get(Key(Name, "server"), Conf),
+    Server = case cuttlefish:conf_get(Key(Name, "type"), Conf) of
+      single ->
+        {Host, Port} = Fun(Servers),
+        [{host, Host}, {port, Port}];
+      R ->
+        S = string:tokens(Servers, ","),
+        [{servers, [Fun(S1) || S1 <- S]}, {port, 6379}]
+    end,
+    Ssl = cuttlefish:conf_get(Key(Name, "ssl"), Conf),
+    SslOptions = case Ssl of
+       true ->
+            [{options, [{ssl_options, [{cacertfile, cuttlefish:conf_get(Key(Name, "cafile"), Conf)},
+                                       {certfile, cuttlefish:conf_get(Key(Name, "certfile"), Conf)},
+                                       {keyfile, cuttlefish:conf_get(Key(Name, "keyfile"), Conf)}]}]}];
+       _ -> [{options, []}]
+    end,
+    {list_to_atom(Name), [{type, cuttlefish:conf_get(Key(Name, "type"), Conf)},
+                          {sentinel, cuttlefish:conf_get(Key(Name, "sentinel"), Conf)},
+                          {pool_size, cuttlefish:conf_get(Key(Name, "pool_size"), Conf)},
+                          {database, cuttlefish:conf_get(Key(Name, "database"), Conf)},
+                          {password, cuttlefish:conf_get(Key(Name, "password"), Conf)},
+                          {channel, cuttlefish:conf_get(Key(Name, "channel"), Conf)},
+                          {auto_reconnect, 1}] ++ Server ++ SslOptions}
+  end, Vars)
+end}.
 
- {mapping, "backend.redis.message_retain_cmd", "emqx_backend_redis.message_retain_cmd", [
- {default, ""},
- {datatype, string}
- ]}.
+{mapping, "backend.redis.hook.client.connected.$name", "emqx_backend_redis.hooks", [
+  {datatype, string}
+]}.
 
- {mapping, "backend.redis.retainer.max_retained_messages", "emqx_backend_redis.max_retained_messages", [
- {default, 0},
- {datatype, integer}
- ]}.
+{mapping, "backend.redis.hook.client.disconnected.$name", "emqx_backend_redis.hooks", [
+  {datatype, string}
+]}.
 
- %% Maximum payload size of retained message.
- %% {$configurable}
- {mapping, "backend.redis.retainer.max_payload_size", "emqx_retainer.max_payload_size", [
- {default, "1MB"},
- {datatype, bytesize}
- ]}.
+{mapping, "backend.redis.hook.session.subscribed.$name", "emqx_backend_redis.hooks", [
+  {datatype, string}
+]}.
 
- %% Expiry interval of retained message
- %% {$configurable}
- {mapping, "backend.redis.retainer.expiry_interval", "emqx_retainer.expiry_interval", [
- {default, 0},
- {datatype, [integer, {duration, ms}]}
- ]}.
+{mapping, "backend.redis.hook.session.unsubscribed.$name", "emqx_backend_redis.hooks", [
+  {datatype, string}
+]}.
+
+{mapping, "backend.redis.hook.message.publish.$name", "emqx_backend_redis.hooks", [
+  {datatype, string}
+]}.
+
+{mapping, "backend.redis.hook.message.acked.$name", "emqx_backend_redis.hooks", [
+  {datatype, string}
+]}.
+
+{mapping, "backend.redis.hook.message.delivered.$name", "emqx_backend_redis.hooks", [
+  {datatype, string}
+]}.
+
+{translation, "emqx_backend_redis.hooks", fun(Conf) ->
+  Hooks = cuttlefish_variable:filter_by_prefix("backend.redis.hook", Conf),
+  lists:map(fun({[_, _, _,Name1,Name2, _], Val}) ->
+    {lists:concat([Name1,".",Name2]), list_to_binary(Val)}
+  end, Hooks)
+end}.
