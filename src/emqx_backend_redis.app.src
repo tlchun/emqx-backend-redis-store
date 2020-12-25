@@ -7,6 +7,7 @@
 %%% Created : 06. 12月 2020 16:42
 %%%-------------------------------------------------------------------
 {application, emqx_backend_redis, [
+  {vsn,"4.1.0"},
   {description, ""},
   {modules,[emqx_backend_redis, emqx_backend_redis_app, emqx_backend_redis_cli, emqx_backend_redis_sub, emqx_backend_redis_sup]},
   {registered, [emqx_backend_redis_sup]},
